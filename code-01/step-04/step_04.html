@@ -8,6 +8,7 @@
       margin-bottom: 1rem;
       border: 1px solid #ccc;
       padding: 0.5rem;
+      min-height: 50px;
     }
 
     .user-message {
@@ -17,6 +18,23 @@
     .assistant-message {
       color: #28A745;
     }
+
+    /* Loading spinner styles */
+    #loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
 </head>
 
@@ -24,7 +42,7 @@
   <div id="conversation-history"></div>
 
   <input type="text" id="input">
-  <button onclick="chat()">chat</button>
+  <button id="chat-btn" onclick="chat()">chat</button>
   <div id="result"></div>
 
   <script>
@@ -32,16 +50,24 @@
     headers.append("Content-Type", "application/json");
     headers.append("Authorization", "Bearer sk-UgtZ6M4qw7Ycfzok0cC1E8C690A04b92B38e381c4c5661D5");
 
+    // 历史对话记录
     let conversationHistory = [{ role: "system", content: "You are a helpful assistant." }];
+    let isLoading = false;
+
+    function chatClickAction() {
+      openLoading();
+      document.getElementById("input").value = ''
+      // disable 按钮
+      document.querySelector("#chat-btn").disabled = true;
+    }
 
     function chat() {
       const userInput = document.getElementById("input").value;
-      conversationHistory.push({ role: "user", content: userInput });
-
-      document.getElementById("input").value = ''
-
       const messageId = `user-${Date.now()}`;
+
+      conversationHistory.push({ role: "user", content: userInput });
       appendToConversationHistory("user", userInput, messageId);
+      chatClickAction();
 
       const requestOptions = {
         method: 'POST', headers,
@@ -65,24 +91,22 @@
             const { done, value } = await reader.read();
             if (done) {
               console.log("Stream complete");
+              conversationHistory.push({ role: "assistant", content: aiMessage });
+              document.querySelector("#chat-btn").disabled = false;
               return;
             }
+            if (isLoading) closeLoading();
 
             const chunk = decoder.decode(value, { stream: true });
             let messages = (partialMessage + chunk).split("\n");
             partialMessage = messages.pop();
 
-            console.log("chunk", chunk);
-            // console.log("partialMessage:", partialMessage);
-
             // 过滤数组里的空字符串
             messages = messages.filter(message => message);
-            // console.log("messages", messages);
 
             for (const message of messages) {
               if (!message) continue; // 忽略空字符串
               if (message === "data: [DONE]") {
-                console.log("Breaking out of the while loop due to condition.");
                 break;
               }
               const jsonStartIndex = message.indexOf("{");
@@ -98,7 +122,6 @@
 
             }
           }
-          conversationHistory.push({ role: "assistant", content: aiMessage });
         })
         .catch(error => console.log('error', error));
     }
@@ -111,36 +134,26 @@
         messageElement = document.createElement("div");
         messageElement.id = messageElementId;
         messageElement.classList.add(`${role}-message`);
-
       }
       messageElement.textContent = `${role}: ${content}`;
       historyContainer.appendChild(messageElement);
     };
 
-
-    function initSSE() {
-      const eventSource = new EventSource("https://ai98.vip/v1/chat/completions");
-
-      eventSource.onmessage = function (event) {
-        const aiResponse = event.data;
-
-        // Add AI response to conversation history
-        conversationHistory.push({ role: "assistant", content: aiResponse });
-
-        console.log("Received SSE message:", aiResponse);
-        document.getElementById("result").innerHTML = aiResponse;
-
-        // updateConversationDisplay();
-      };
-
-      eventSource.onerror = function (error) {
-        console.error("Error occurred with SSE connection:", error);
-      };
+    function openLoading() {
+      isLoading = true;
+      // 创建loading 节点
+      const loadingElement = document.createElement("div");
+      loadingElement.id = "loading";
+      loadingElement.style.display = "inline-block";
+      // 挂在到historyContainer
+      document.getElementById("conversation-history").appendChild(loadingElement);
     }
 
-    // window.onload = function () {
-    //   initSSE();
-    // };
+    function closeLoading() {
+      isLoading = false;
+      // 删除loading节点
+      document.getElementById("loading").remove();
+    }
   </script>
 </body>
 
